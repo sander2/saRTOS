@@ -206,7 +206,8 @@ void InitRTOS()
         sp -= SavedContext[i].stack_space;
     }
 
-    context = &context;
+    context = &SavedContext[0];
+    
     TCCR2A = 0;
     TCCR2B = (1 << CS22);
     TIMSK2 = 1;
