@@ -37,7 +37,7 @@ struct context SavedContext[2] =
     },
 };
 
-int currentThreadID = 0;
+uint8_t currentThreadID = 0;
 struct context *context;
 
 ISR(TIMER2_OVF_vect, ISR_NAKED)
@@ -97,13 +97,17 @@ ISR(TIMER2_OVF_vect, ISR_NAKED)
     asm("IN R1,0x3E");  // SP
     asm("ST X+, R0");   // SP   
     asm("ST X+, R1");   // SP
-    
 
+
+    // clear R1; avr-gcc assumes R1 to be zero when executing C code
+    asm("CLR R1");
     // clear overflow flag
     TIFR2 = 0;
     // do the actual context switch
-    currentThreadID = 1 - currentThreadID;
+    if (++currentThreadID >= sizeof(SavedContext) / sizeof(SavedContext[0]))
+        currentThreadID = 0;
     context = &SavedContext[currentThreadID];
+
 
     asm("ldi r26, lo8(context)");   // load address of the context pointer into X
     asm("ldi r27, hi8(context)");  
@@ -207,7 +211,7 @@ void InitRTOS()
     }
 
     context = &SavedContext[0];
-    
+
     TCCR2A = 0;
     TCCR2B = (1 << CS22);
     TIMSK2 = 1;
