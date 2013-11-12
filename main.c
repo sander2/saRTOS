@@ -26,30 +26,36 @@ struct context SavedContext[2] =
     	0,
     	NULL,
     	256,
-    	NumPrimes,
+        NumPrimes,
     },
     {
     	{0,},
     	0,
     	NULL,
     	256,
-    	ToggleLed,
+        ToggleLed,
     },
 };
 
 int currentThreadID = 0;
-struct context context;
+struct context *context;
 
 ISR(TIMER2_OVF_vect, ISR_NAKED)
 {
 
     asm("push R31");    // store R31 on stack
-    asm("IN R31,0x3F");    // save SREG in R31
+    asm("IN R31,0x3F"); // save SREG in R31
 
     asm("push r26");
     asm("push r27");
-    asm("ldi r26, lo8(context)");  
-    asm("ldi r27, hi8(context)");
+    asm("push R28");
+    asm("push R29");
+    asm("ldi r28, lo8(context)"); // load address of the context pointer into Y
+    asm("ldi r29, hi8(context)");
+    asm("ld r26, Y+"); // load the value of the context pointer into X
+    asm("ld r27, Y+");
+    asm("pop r29");
+    asm("pop r28");
 
     asm("ST X+, R0");
     asm("ST X+, R1");
@@ -77,40 +83,38 @@ ISR(TIMER2_OVF_vect, ISR_NAKED)
     asm("ST X+, R23");
     asm("ST X+, R24");
     asm("ST X+, R25");
-    asm("POP R25");        // R26-27 = X
-    asm("POP R24");        // R26-27 = X
-    asm("ST X+, R24");    // R26-27 = X
-    asm("ST X+, R25");    // R26-27 = X
+    asm("POP R25");     // R26-27 = X
+    asm("POP R24");     // R26-27 = X
+    asm("ST X+, R24");  // R26-27 = X
+    asm("ST X+, R25");  // R26-27 = X
     asm("ST X+, R28");
     asm("ST X+, R29");
     asm("ST X+, R30");
-    asm("POP R0");        // get original R31 from stack
-    asm("ST X+, R0");    // original R31
-    asm("ST X+, R31");    // SREG
-    asm("IN R0,0x3D");    // SP; all pushes are popped here; SP is same as at begin of ISR
-    asm("IN R1,0x3E");    // SP
-    asm("ST X+, R0");    // SP   
-    asm("ST X+, R1");    // SP
-
+    asm("POP R0");      // get original R31 from stack
+    asm("ST X+, R0");   // original R31
+    asm("ST X+, R31");  // SREG
+    asm("IN R0,0x3D");  // SP; all pushes are popped here; SP is same as at begin of ISR
+    asm("IN R1,0x3E");  // SP
+    asm("ST X+, R0");   // SP   
+    asm("ST X+, R1");   // SP
+    
 
     // clear overflow flag
     TIFR2 = 0;
     // do the actual context switch
-    memcpy(&SavedContext[currentThreadID], &context, sizeof(context));
     currentThreadID = 1 - currentThreadID;
-    memcpy(&context, &SavedContext[currentThreadID], sizeof(context));
+    context = &SavedContext[currentThreadID];
 
-
-    asm("ldi r28, lo8(context + 32)");  
-    asm("ldi r29, hi8(context + 32)");
-    asm("LD R16, Y+");        // SREG
-    asm("OUT 0x3F, R16");    // SREG
-    asm("LD R16, Y+");        // SP
-    asm("LD R17, Y+");        // SP
-    asm("OUT 0x3D, R16");    // SP
-    asm("OUT 0x3E, R17");    // SP   
-    asm("ldi r28, lo8(context)");  
-    asm("ldi r29, hi8(context)");
+    asm("ldi r26, lo8(context)");   // load address of the context pointer into X
+    asm("ldi r27, hi8(context)");  
+    asm("ld r28, X+");              // load the value of the context pointer into Y
+    asm("ld r29, X+");
+    asm("LDD R16, Y+32");   // SREG
+    asm("OUT 0x3F, R16");   // SREG
+    asm("LDD R16, Y+33");   // SP
+    asm("LDD R17, Y+34");   // SP
+    asm("OUT 0x3D, R16");   // SP
+    asm("OUT 0x3E, R17");   // SP   
     asm("LD R0,  Y+");
     asm("LD R1,  Y+");
     asm("LD R2,  Y+");
@@ -139,14 +143,14 @@ ISR(TIMER2_OVF_vect, ISR_NAKED)
     asm("LD R25, Y+");
     asm("LD R26, Y+");
     asm("LD R27, Y+");
-    asm("LD R30, Y+");    // can't store Y (R28-29 yet, so store on stack)
-    asm("LD R31, Y+");    // can't store Y (R28-29 yet, so store on stack)
-    asm("PUSH R30");      // can't store Y (R28-29 yet, so store on stack)
-    asm("PUSH R31");      // can't store Y (R28-29 yet, so store on stack)
-    asm("LD R30, Y+");
-    asm("LD R31, Y+");
-    asm("POP R29");        // finally restore Y (R28-29)
-    asm("POP R28");        // finally restore Y (R28-29)
+    asm("LD R30, Y+");  // can't store Y (R28-29 yet, so store on stack)
+    asm("LD R31, Y+");  // can't store Y (R28-29 yet, so store on stack)
+    asm("PUSH R30");    // can't store Y (R28-29 yet, so store on stack)
+    asm("PUSH R31");    // can't store Y (R28-29 yet, so store on stack)
+    asm("LD R30, Y+");  
+    asm("LD R31, Y+");  
+    asm("POP R29");     // finally restore Y (R28-29)
+    asm("POP R28");     // finally restore Y (R28-29)
 
     asm("reti");
 }
@@ -201,6 +205,8 @@ void InitRTOS()
         memcpy(ptr, &val, sizeof(val));
         sp -= SavedContext[i].stack_space;
     }
+
+    context = &context;
     TCCR2A = 0;
     TCCR2B = (1 << CS22);
     TIMSK2 = 1;
